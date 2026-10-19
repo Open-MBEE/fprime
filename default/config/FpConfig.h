@@ -78,6 +78,10 @@ extern "C" {
 #define FW_PORT_TRACING (1)  //!< Indicates whether port calls are traced (more code, more visibility into execution)
 #endif
 
+#ifndef FW_PORT_SPAN_TRACING
+#define FW_PORT_SPAN_TRACING (0)  //!< Generate causal span-tracing calls on typed port invocations
+#endif
+
 // This generates code to connect to serialized ports
 #ifndef FW_PORT_SERIALIZATION
 #define FW_PORT_SERIALIZATION \

@@ -12,14 +12,20 @@ register_fprime_module(
     "${CMAKE_CURRENT_LIST_DIR}/OutputPortBase.cpp"
     "${CMAKE_CURRENT_LIST_DIR}/OutputSerializePort.cpp"
     "${CMAKE_CURRENT_LIST_DIR}/PortBase.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/PortTrace.cpp"
   HEADERS
     "${CMAKE_CURRENT_LIST_DIR}/InputPortBase.hpp"
     "${CMAKE_CURRENT_LIST_DIR}/InputSerializePort.hpp"
     "${CMAKE_CURRENT_LIST_DIR}/OutputPortBase.hpp"
     "${CMAKE_CURRENT_LIST_DIR}/OutputSerializePort.hpp"
     "${CMAKE_CURRENT_LIST_DIR}/PortBase.hpp"
+    "${CMAKE_CURRENT_LIST_DIR}/PortTrace.hpp"
   DEPENDS
     Fw_Types
     Fw_Logger
     Fw_Obj
 )
+
+if (BUILD_TESTING)
+  add_fprime_subdirectory("${CMAKE_CURRENT_LIST_DIR}/test/ut")
+endif()

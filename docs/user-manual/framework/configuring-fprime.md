@@ -242,8 +242,8 @@ increased as most file name paths are longer than 120.
 
 When components are interconnected, it is often useful to trace the set of invocations through components and ports. The
 port base class has a `trace()` call that is invoked by the derived port classes whenever the port is invoked. The
-`trace()` calls `Os::Log::log()` with the name of the port once the port base class method `setTrace()` has been called.
-Individual ports can have tracing turned on and off by calling the `overrideTrace()` method on the port instance.
+`trace()` calls `Fw::Logger::log()` with the name of the port once the port base class method `setTrace()` has been called.
+Individual ports can have tracing turned on and off by calling the `ovrTrace()` method on the port instance.
 Table 39 provides the macro to configure this feature.
 
 **Table 39.** Macro for port tracing.
@@ -252,6 +252,15 @@ Table 39 provides the macro to configure this feature.
 | Macro             | Definition            | Default | Valid Values      |
 | ----------------- | --------------------- |---------|-------------------|
 | FW_PORT_TRACING   | Enables port tracing. | 1 (on)  | 0 (off) 1 (on)    |
+| FW_PORT_SPAN_TRACING | Generates causal span tracing for typed port invocations. | 0 (off) | 0 (off) 1 (on) |
+
+### Port Span Tracing
+
+`FW_PORT_SPAN_TRACING` enables generated span events for typed output calls in direct and indirect port-call modes.
+For asynchronous typed inputs, generated code captures the current context when enqueuing a message, reports dispatch
+begin/end around the handler, and reports messages dropped by a full queue. Install an observer with
+`Fw::PortTrace::setObserver()` before port-invoking threads start; the observer owns per-thread span state. When disabled,
+the generated code and message overhead are absent; when enabled, each asynchronous message carries 25 bytes of context.
 
 ### Port Serialization
 
