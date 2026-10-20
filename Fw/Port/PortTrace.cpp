@@ -9,22 +9,22 @@ void PortTrace::setObserver(PortTraceObserver* observer) {
 }
 
 void PortTrace::callBegin(const PassiveComponentBase& caller,
-                          const char* port,
+                          FwIndexType portId,
                           FwIndexType portNum,
                           TraceContext& span) {
     if (PortTrace::s_observer != nullptr) {
-        PortTrace::s_observer->callBegin(caller, port, portNum, span);
+        PortTrace::s_observer->callBegin(caller, portId, portNum, span);
     } else {
         span = TraceContext{};
     }
 }
 
 void PortTrace::callEnd(const PassiveComponentBase& caller,
-                        const char* port,
+                        FwIndexType portId,
                         FwIndexType portNum,
                         const TraceContext& span) {
     if (PortTrace::s_observer != nullptr) {
-        PortTrace::s_observer->callEnd(caller, port, portNum, span);
+        PortTrace::s_observer->callEnd(caller, portId, portNum, span);
     }
 }
 
@@ -37,32 +37,32 @@ void PortTrace::current(TraceContext& ctx) {
 }
 
 void PortTrace::dispatchBegin(const PassiveComponentBase& comp,
-                              const char* port,
+                              FwIndexType portId,
                               FwIndexType portNum,
                               const TraceContext& cause,
                               TraceContext& span) {
     if (PortTrace::s_observer != nullptr) {
-        PortTrace::s_observer->dispatchBegin(comp, port, portNum, cause, span);
+        PortTrace::s_observer->dispatchBegin(comp, portId, portNum, cause, span);
     } else {
         span = TraceContext{};
     }
 }
 
 void PortTrace::dispatchEnd(const PassiveComponentBase& comp,
-                            const char* port,
+                            FwIndexType portId,
                             FwIndexType portNum,
                             const TraceContext& span) {
     if (PortTrace::s_observer != nullptr) {
-        PortTrace::s_observer->dispatchEnd(comp, port, portNum, span);
+        PortTrace::s_observer->dispatchEnd(comp, portId, portNum, span);
     }
 }
 
 void PortTrace::dropped(const PassiveComponentBase& comp,
-                        const char* port,
+                        FwIndexType portId,
                         FwIndexType portNum,
                         const TraceContext& cause) {
     if (PortTrace::s_observer != nullptr) {
-        PortTrace::s_observer->dropped(comp, port, portNum, cause);
+        PortTrace::s_observer->dropped(comp, portId, portNum, cause);
     }
 }
 

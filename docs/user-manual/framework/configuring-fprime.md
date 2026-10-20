@@ -13,6 +13,7 @@ This guide includes:
     - [Object Settings](#object-settings)
     - [Asserts](#asserts)
     - [Port Tracing](#port-tracing)
+        - [Port Span Tracing](#port-span-tracing)
     - [Port Serialization](#port-serialization)
     - [Buffer Sizes](#buffer-sizes)
     - [Text Logging](#text-logging)
@@ -261,6 +262,14 @@ For asynchronous typed inputs, generated code captures the current context when 
 begin/end around the handler, and reports messages dropped by a full queue. Install an observer with
 `Fw::PortTrace::setObserver()` before port-invoking threads start; the observer owns per-thread span state. When disabled,
 the generated code and message overhead are absent; when enabled, each asynchronous message carries 25 bytes of context.
+
+For a call event, the numeric identity is `(caller.getInstance(), portId, portNum)`; dispatch and drop events report the
+receiving component's instance and input-port trace ID. `portId` is a generated `PORT_TRACE_ID_*` constant. The
+topology dictionary's `connections` entries retain the `instance` and `port` names alongside the connection `id`,
+endpoint `instanceId`, `portId`, and port `index`; use the dictionary from the same build to resolve these numbers.
+The generated topology's optional `getConnectionId(instanceId, portId, portNum)` function returns the dictionary
+connection ID, or `-1` when there is no matching connection. `getInstance()` is unique only when components are
+initialized by the generated topology code.
 
 ### Port Serialization
 

@@ -1,6 +1,7 @@
 #include <gtest/gtest.h>
 
 #include <Fw/Port/PortTrace.hpp>
+#include <Fw/Port/test/ut/span/PortSpanTracingTopologyAc.hpp>
 #include <Fw/Port/test/ut/span/SpanTestReceiverComponentAc.hpp>
 #include <Fw/Port/test/ut/span/SpanTestSenderComponentAc.hpp>
 
@@ -10,30 +11,34 @@ enum class EventKind { CALL_BEGIN, CALL_END, DISPATCH_BEGIN, DISPATCH_END, DROPP
 
 struct Event {
     EventKind kind;
-    const char* port;
+    FwEnumStoreType instanceId;
+    FwIndexType portId;
     FwIndexType portNum;
+#if FW_OBJECT_NAMES == 1
+    const char* objectName;
+#endif
     Fw::TraceContext span;
     Fw::TraceContext cause;
 };
 
 class RecordingObserver final : public Fw::PortTraceObserver {
   public:
-    RecordingObserver() : m_nextId(0), m_depth(0), m_eventCount(0) {}
+    RecordingObserver() : m_nextId(0), m_depth(0), m_eventCount(0), m_stack{}, m_events{} {}
 
-    void callBegin(const Fw::PassiveComponentBase&,
-                   const char* port,
+    void callBegin(const Fw::PassiveComponentBase& caller,
+                   FwIndexType portId,
                    FwIndexType portNum,
                    Fw::TraceContext& span) override {
         this->assignSpan(span);
         this->push(span);
-        this->record(EventKind::CALL_BEGIN, port, portNum, &span, nullptr);
+        this->record(EventKind::CALL_BEGIN, caller, portId, portNum, &span, nullptr);
     }
 
-    void callEnd(const Fw::PassiveComponentBase&,
-                 const char* port,
+    void callEnd(const Fw::PassiveComponentBase& caller,
+                 FwIndexType portId,
                  FwIndexType portNum,
                  const Fw::TraceContext& span) override {
-        this->record(EventKind::CALL_END, port, portNum, &span, nullptr);
+        this->record(EventKind::CALL_END, caller, portId, portNum, &span, nullptr);
         this->pop();
     }
 
@@ -41,32 +46,34 @@ class RecordingObserver final : public Fw::PortTraceObserver {
         ctx = this->m_depth == 0 ? Fw::TraceContext{} : this->m_stack[this->m_depth - 1];
     }
 
-    void dispatchBegin(const Fw::PassiveComponentBase&,
-                       const char* port,
+    void dispatchBegin(const Fw::PassiveComponentBase& comp,
+                       FwIndexType portId,
                        FwIndexType portNum,
                        const Fw::TraceContext& cause,
                        Fw::TraceContext& span) override {
         this->assignSpan(span);
         this->push(span);
-        this->record(EventKind::DISPATCH_BEGIN, port, portNum, &span, &cause);
+        this->record(EventKind::DISPATCH_BEGIN, comp, portId, portNum, &span, &cause);
     }
 
-    void dispatchEnd(const Fw::PassiveComponentBase&,
-                     const char* port,
+    void dispatchEnd(const Fw::PassiveComponentBase& comp,
+                     FwIndexType portId,
                      FwIndexType portNum,
                      const Fw::TraceContext& span) override {
-        this->record(EventKind::DISPATCH_END, port, portNum, &span, nullptr);
+        this->record(EventKind::DISPATCH_END, comp, portId, portNum, &span, nullptr);
         this->pop();
     }
 
-    void dropped(const Fw::PassiveComponentBase&,
-                 const char* port,
+    void dropped(const Fw::PassiveComponentBase& comp,
+                 FwIndexType portId,
                  FwIndexType portNum,
                  const Fw::TraceContext& cause) override {
-        this->record(EventKind::DROPPED, port, portNum, nullptr, &cause);
+        this->record(EventKind::DROPPED, comp, portId, portNum, nullptr, &cause);
     }
 
-    void noteHandler(const char* port) { this->record(EventKind::HANDLER, port, 0, nullptr, nullptr); }
+    void noteHandler(const Fw::PassiveComponentBase& comp) {
+        this->record(EventKind::HANDLER, comp, 0, 0, nullptr, nullptr);
+    }
 
     U32 eventCount() const { return this->m_eventCount; }
     const Event& event(U32 index) const { return this->m_events[index]; }
@@ -100,32 +107,37 @@ class RecordingObserver final : public Fw::PortTraceObserver {
     }
 
     void record(EventKind kind,
-                const char* port,
+                const Fw::PassiveComponentBase& comp,
+                FwIndexType portId,
                 FwIndexType portNum,
                 const Fw::TraceContext* span,
                 const Fw::TraceContext* cause) {
         if (this->m_eventCount < EVENT_CAPACITY) {
             Event& event = this->m_events[this->m_eventCount++];
             event.kind = kind;
-            event.port = port;
+            event.instanceId = comp.getInstance();
+            event.portId = portId;
             event.portNum = portNum;
+#if FW_OBJECT_NAMES == 1
+            event.objectName = comp.getObjName();
+#endif
             event.span = span == nullptr ? Fw::TraceContext{} : *span;
             event.cause = cause == nullptr ? Fw::TraceContext{} : *cause;
         }
     }
 };
 
-class SpanTestSender final : public Fw::SpanTestSenderComponentBase {
+class SenderHarness final : public Fw::SpanTestSenderComponentBase {
   public:
-    SpanTestSender() : Fw::SpanTestSenderComponentBase("sender") {}
+    SenderHarness() : Fw::SpanTestSenderComponentBase("sender") {}
 
     U32 invokeSync(FwIndexType portNum, U32 arg) { return this->syncOut_out(portNum, arg); }
     void invokeAsync(FwIndexType portNum, U32 arg) { this->asyncOut_out(portNum, arg); }
 };
 
-class SpanTestReceiver final : public Fw::SpanTestReceiverComponentBase {
+class ReceiverHarness final : public Fw::SpanTestReceiverComponentBase {
   public:
-    explicit SpanTestReceiver(RecordingObserver& observer)
+    explicit ReceiverHarness(RecordingObserver& observer)
         : Fw::SpanTestReceiverComponentBase("receiver"),
           m_observer(observer),
           m_syncHandlerRan(false),
@@ -134,7 +146,7 @@ class SpanTestReceiver final : public Fw::SpanTestReceiverComponentBase {
     U32 syncIn_handler(FwIndexType, U32 arg) override {
         this->m_syncHandlerRan = true;
         if (this->m_recordHandlerEvents) {
-            this->m_observer.noteHandler("syncIn");
+            this->m_observer.noteHandler(*this);
         }
         return arg + 1;
     }
@@ -142,7 +154,7 @@ class SpanTestReceiver final : public Fw::SpanTestReceiverComponentBase {
     void asyncIn_handler(FwIndexType, U32) override {
         ++this->m_asyncHandlerCount;
         if (this->m_recordHandlerEvents) {
-            this->m_observer.noteHandler("asyncIn");
+            this->m_observer.noteHandler(*this);
         }
     }
 
@@ -164,8 +176,8 @@ class PortSpanTracingTest : public ::testing::Test {
 
     void SetUp() override {
         Fw::PortTrace::setObserver(&this->m_observer);
-        this->m_sender.init();
-        this->m_receiver.init(1);
+        this->m_sender.init(Fw::InstanceIds::Fw_spanSender);
+        this->m_receiver.init(1, Fw::InstanceIds::Fw_spanReceiver);
         this->m_sender.set_syncOut_OutputPort(0, this->m_receiver.get_syncIn_InputPort(0));
         this->m_sender.set_asyncOut_OutputPort(0, this->m_receiver.get_asyncIn_InputPort(0));
     }
@@ -177,19 +189,25 @@ class PortSpanTracingTest : public ::testing::Test {
     }
 
     RecordingObserver m_observer;
-    SpanTestSender m_sender;
-    SpanTestReceiver m_receiver;
+    SenderHarness m_sender;
+    ReceiverHarness m_receiver;
 };
 
 TEST_F(PortSpanTracingTest, SyncCallBracketsTheHandler) {
     EXPECT_EQ(42U, this->m_sender.invokeSync(0, 41));
     ASSERT_EQ(3U, this->m_observer.eventCount());
     EXPECT_EQ(EventKind::CALL_BEGIN, this->m_observer.event(0).kind);
-    EXPECT_STREQ("syncOut", this->m_observer.event(0).port);
+    EXPECT_EQ(Fw::InstanceIds::Fw_spanSender, this->m_observer.event(0).instanceId);
+    EXPECT_EQ(Fw::SpanTestSenderComponentBase::PORT_TRACE_ID_SYNCOUT, this->m_observer.event(0).portId);
     EXPECT_EQ(0, this->m_observer.event(0).portNum);
     EXPECT_EQ(EventKind::HANDLER, this->m_observer.event(1).kind);
     EXPECT_EQ(EventKind::CALL_END, this->m_observer.event(2).kind);
+    EXPECT_EQ(Fw::InstanceIds::Fw_spanSender, this->m_observer.event(2).instanceId);
+    EXPECT_EQ(Fw::SpanTestSenderComponentBase::PORT_TRACE_ID_SYNCOUT, this->m_observer.event(2).portId);
     EXPECT_EQ(this->m_observer.event(0).span.spanId[7], this->m_observer.event(2).span.spanId[7]);
+#if FW_OBJECT_NAMES == 1
+    EXPECT_STREQ("sender", this->m_observer.event(0).objectName);
+#endif
     EXPECT_TRUE(this->m_receiver.syncHandlerRan());
 }
 
@@ -199,9 +217,14 @@ TEST_F(PortSpanTracingTest, AsyncCausePropagatesThroughDispatch) {
 
     ASSERT_EQ(5U, this->m_observer.eventCount());
     EXPECT_EQ(EventKind::CALL_BEGIN, this->m_observer.event(0).kind);
+    EXPECT_EQ(Fw::InstanceIds::Fw_spanSender, this->m_observer.event(0).instanceId);
+    EXPECT_EQ(Fw::SpanTestSenderComponentBase::PORT_TRACE_ID_ASYNCOUT, this->m_observer.event(0).portId);
     EXPECT_EQ(EventKind::CALL_END, this->m_observer.event(1).kind);
+    EXPECT_EQ(Fw::InstanceIds::Fw_spanSender, this->m_observer.event(1).instanceId);
+    EXPECT_EQ(Fw::SpanTestSenderComponentBase::PORT_TRACE_ID_ASYNCOUT, this->m_observer.event(1).portId);
     EXPECT_EQ(EventKind::DISPATCH_BEGIN, this->m_observer.event(2).kind);
-    EXPECT_STREQ("asyncIn", this->m_observer.event(2).port);
+    EXPECT_EQ(Fw::InstanceIds::Fw_spanReceiver, this->m_observer.event(2).instanceId);
+    EXPECT_EQ(Fw::SpanTestReceiverComponentBase::PORT_TRACE_ID_ASYNCIN, this->m_observer.event(2).portId);
     EXPECT_EQ(0, this->m_observer.event(2).portNum);
     EXPECT_EQ(this->m_observer.event(0).span.spanId[7], this->m_observer.event(2).cause.spanId[7]);
     EXPECT_EQ(EventKind::HANDLER, this->m_observer.event(3).kind);
@@ -215,11 +238,26 @@ TEST_F(PortSpanTracingTest, QueueDropReportsTheActiveCause) {
 
     ASSERT_EQ(5U, this->m_observer.eventCount());
     EXPECT_EQ(EventKind::DROPPED, this->m_observer.event(3).kind);
-    EXPECT_STREQ("asyncIn", this->m_observer.event(3).port);
+    EXPECT_EQ(Fw::InstanceIds::Fw_spanReceiver, this->m_observer.event(3).instanceId);
+    EXPECT_EQ(Fw::SpanTestReceiverComponentBase::PORT_TRACE_ID_ASYNCIN, this->m_observer.event(3).portId);
     EXPECT_EQ(0, this->m_observer.event(3).portNum);
     EXPECT_EQ(this->m_observer.event(2).span.spanId[7], this->m_observer.event(3).cause.spanId[7]);
     this->m_receiver.dispatchMessages();
     EXPECT_EQ(1U, this->m_receiver.asyncHandlerCount());
+}
+
+TEST_F(PortSpanTracingTest, TopologyConnectionIdsMatchTheDictionary) {
+    EXPECT_EQ(0, Fw::getConnectionId(Fw::InstanceIds::Fw_spanSender,
+                                     Fw::SpanTestSenderComponentBase::PORT_TRACE_ID_ASYNCOUT, 0));
+    EXPECT_EQ(1, Fw::getConnectionId(Fw::InstanceIds::Fw_spanSender,
+                                     Fw::SpanTestSenderComponentBase::PORT_TRACE_ID_SYNCOUT, 0));
+    EXPECT_EQ(static_cast<FwIndexType>(-1),
+              Fw::getConnectionId(Fw::InstanceIds::Fw_spanSender,
+                                  Fw::SpanTestSenderComponentBase::PORT_TRACE_ID_ASYNCOUT, 1));
+    EXPECT_EQ(
+        static_cast<FwIndexType>(-1),
+        Fw::getConnectionId(Fw::InstanceIds::Fw_spanSender,
+                            static_cast<FwIndexType>(Fw::SpanTestSenderComponentBase::PORT_TRACE_ID_SYNCOUT + 1), 0));
 }
 
 TEST_F(PortSpanTracingTest, CallsWorkWithoutAnObserver) {
