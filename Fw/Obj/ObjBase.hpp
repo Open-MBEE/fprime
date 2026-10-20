@@ -41,7 +41,7 @@ class ObjBase {
     //!  This function returns a pointer to the name of the object
     //!
     //!  \return object name
-    const char* getObjName();  //!< Returns object name
+    const char* getObjName() const;  //!< Returns object name
 
     //!  \brief Sets the object name
     //!

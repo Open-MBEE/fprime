@@ -32,7 +32,7 @@ void ObjBase::init() {
 ObjBase::~ObjBase() {}
 
 #if FW_OBJECT_NAMES == 1
-const char* ObjBase::getObjName() {
+const char* ObjBase::getObjName() const {
     return this->m_objName.toChar();
 }
 
