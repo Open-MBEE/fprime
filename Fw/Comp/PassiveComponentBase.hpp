@@ -18,11 +18,12 @@ class PassiveComponentBase : public Fw::ObjBase {
 
     virtual void deinit();  //!< Deinitialization function
 
+    FwEnumStoreType getInstance() const;
+
   protected:
     PassiveComponentBase(const char* name);  //!< Named constructor
     virtual ~PassiveComponentBase();         //!< Destructor
     void init(FwEnumStoreType instance);     //!< Initialization function
-    FwEnumStoreType getInstance() const;
 
 #if FW_OBJECT_TO_STRING == 1
     virtual const char* getToStringFormatString();       //!< Return the format  for a generic component toString
