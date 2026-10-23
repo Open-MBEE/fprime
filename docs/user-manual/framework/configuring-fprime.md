@@ -267,6 +267,11 @@ For a call event, the numeric identity is `(caller.getInstance(), portId, portNu
 receiving component's instance and input-port trace ID. `portId` is a generated `PORT_TRACE_ID_*` constant. The
 topology dictionary's `connections` entries retain the `instance` and `port` names alongside the connection `id`,
 endpoint `instanceId`, `portId`, and port `index`; use the dictionary from the same build to resolve these numbers.
+
+The motivation for span tracing, its relation to the earlier tracing and observability requests, and the options for
+reducing the per-message context on constrained targets are presented in
+[Port Span Tracing: from what happened to why it happened](../../../Fw/Port/docs/port-span-tracing.md), a
+[Marp](https://marp.app/) slide deck (`marp Fw/Port/docs/port-span-tracing.md --pdf`).
 The generated topology's optional `getConnectionId(instanceId, portId, portNum)` function returns the dictionary
 connection ID, or `-1` when there is no matching connection. `getInstance()` is unique only when components are
 initialized by the generated topology code.
